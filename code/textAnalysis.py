@@ -6,29 +6,33 @@ import csv
 import datetime
 
 #划分一审文书需要用到的正则表达式,暂时只能用来提取判决书，裁定书格式较乱
-judgetype_re=r'\s*.*?书\s*$'
-defendant_re=r'^\s*被告人(?!.{5,10}一案).*?[，。]|^被告人.*?（.*?）[，。]'
-defender_re=r'^辩护人.{2,3}[，|。]'
-suing_re=r'向本院提起公诉[，|。]'
-zhikong_re=r'^\s*?.*?指控称?[：|，]'
-zhikong_re1=r'提请本院.*?(?:惩|判)处[，。]$|定罪量刑[，。]$'
-zhikong_re2=r'^被告人.*?辩称|.*?异议.*?|^被告人的辩护人认为|^\s*?(?:本院)?经(?:本院)?审[理查].*?查明.*?[：|，]'
-zhikong_re_list=[r'提请本院.*?(?:惩|判)处[，。]',r'定罪量刑[，。]',r'被告人.*?辩称',r'.*?异议.*?',r'^被告人的辩护人认为',r'^\s*?(?:本院)?经(?:本院)(?:法庭)?审理.*?查明.*?[：|，]',r'^上述事实',r'被告人.*?交代了.*?事实']
-shenli_re=r'^\s*?(?:本院)?经(?:本院)?(?:法庭)?审[查理].*?查明.*?[：|，]'
-shenli_re1=r'^\s*?本院认为'
-panjue_re=r'判决如下：?:?$|拟判如下：?:?$|判处如下：?:?$|作如下判决：$'
-panjue_re1=r'^如.*?不服本判决|^\s*审\s*判\s*长'
+judgetype_re = r'\s*.*?书\s*$'
+defendant_re = r'^\s*被告人(?!.{5,10}一案).*?[，；。]|^\s*被告人.*?（.*?）.*?[，；。]'
+defender_re = r'^辩护人.{2,3}[，；。]'
+suing_re = r'向本院提起公诉[；，。]'
+zhikong_re = r'^\s*?.*?指控称?[：。，]'
+zhikong_re1 = r'提请本院.*?(?:惩|判)处[，；。]$|定罪量刑[，；。]$'
+zhikong_re2 = r'^被告人.*?辩称|.*?异议.*?|^被告人的辩护人认为|^\s*?(?:本院)?经(?:本院)?审[理查].*?查明.*?[：。，]'
+zhikong_re_list = [r'提请本院.*?(?:惩|判)处[，；。]',r'定罪量刑[，；。]',r'被告人.*?辩称',r'.*?异议.*?',r'^被告人的辩护人认为',r'^\s*?(?:本院)?经(?:本院)?(?:法庭)?审理.*?查明.*?[：，。]',r'^上述事实',r'被告人.*?交代了.*?事实']
+shenli_re = r'^\s*?(?:本院)?经(?:本院)?(?:法庭)?审[查理].*?查明.*?[：，。]'
+shenli_re1 = r'^\s*?本院认为'
+panjue_re = r'判决如下[:：。，]$|拟判如下[:：。，]$|判处如下[:：。，]$|作如下判决[:：。，]$'
+panjue_re1 = r'^如.*?不服本判决|^\s*审\s*判\s*长'
+
 
 #划分二审文书需要用到的正则表达式
-defendant_re_2=r'^上诉人（?原审被告人）?.*?[，|。]'
-panjue_re_2=r'^本院认为[，|：]'
-panjue_re1_2=r'^本判决为终审判决.*?'
-yuanpan_re=r'^原判.*?认定[，：]'
-yuanpan_re1=r'判决：'
-zhongjie_re=r'现已审理终结。$'
+defendant_re_2 = r'^上诉人（?原审被告人）?.*?[，。；]|^原审被告人.*?[，；。]'
+panjue_re_2 = r'^本院认为[，：。:]|判决如下：?:?$|拟判如下：?:?$|判处如下：?:?$|作如下判决：?:?$|裁定如下：?:?$'
+panjue_re1_2 = r'^本判决为终审判决|^本裁定为终审裁定'
+yuanpan_re = r'判决(?:如下)[:，：。]'
+yuanpan_re1 = r'(?:宣判后，)*(?:原审被告人)*.*?不服，(?:向本院)*提出？起？.*?上诉[，。；]'
+yuan_fact_re = r'^原判.*?认(?:定|为)*[，：。:]|原审法院审理查明'
+yuan_fact_re1 = r'判决(?:如下)[，：。:]'
+zhongjie_re = r'现已审理终结。$'
 
 item = ['docid','defendant_name','gender','birthday','workplace','filing_date','detension_date','bailing_date',
-        'arresting_date','detaining_date','begin_year','end_year','charge','punishment','criminal_money']
+        'arresting_date','detaining_date','begin_year','end_year','criminal_sentences','charge','punishment',
+        'charge_sentences','criminal_money','money_sentences','defendant_info','panjue_list']
 
 #判断某文本在划分好的文书列表中的位置
 def get_index(target,raw_list):
@@ -148,6 +152,7 @@ def get_defendant(text):
     text=get_text(text,r'生于[\d|X]{4}年.+?月.+?日|[\d|X]{4}年.+?月.+?日出?生')
     #提取工作单位和职务
     temp=temp+get_workplace(text)
+    
     #提取逮捕时间等
     temp=temp+get_treatment(text)
     return temp
@@ -168,11 +173,16 @@ def get_judgement(panjue_list):
     punish=[]
     for pj in panjue_list:              
         if re.search(r'被告(?!单位)(?!.*公司)人?.*?犯?.*?罪(?:（未遂）)*[，。；]{0,1}判[处决].*[，。；]{0,1}|被告(?!单位)(?!.*公司)人?.*?犯.*?罪(?:（未遂）)*[，。]{0,1}免予?于?刑事处罚[，。；]{0,1}|被告(?!单位)(?!.*公司)人?.*?犯.*?罪(?:（未遂）)*[，。]{0,1}免除处罚[，。；]{0,1}|被告(?!单位)(?!.*公司)人?.*?犯.*?罪(?:（未遂）)*[，。]{0,1}拘役.*',pj):
-            punish.append(get_info2(pj,r'被告(?!单位)(?!.*公司)人?.*?犯?.*?罪(?:（未遂）)*[，。；]{0,1}判[处决].*[，。；]{0,1}|被告(?!单位)(?!.*公司)人?.*?犯.*?罪(?:（未遂）)*[，。；]{0,1}免予?于?刑事处罚[，。；]{0,1}|被告(?!单位)(?!.*公司)人?.*?犯.*?罪(?:（未遂）)*[，。]{0,1}免除处罚[，。；]{0,1}|被告(?!单位)(?!.*公司)人?.*?犯.*?罪(?:（未遂）)*[，。]{0,1}拘役.*'))
+            punish.append(pj)
+           # punish.append(get_info2(pj,r'被告(?!单位)(?!.*公司)人?.*?犯?.*?罪(?:（未遂）)*[，。；]{0,1}判[处决].*[，。；]{0,1}|被告(?!单位)(?!.*公司)人?.*?犯.*?罪(?:（未遂）)*[，。；]{0,1}免予?于?刑事处罚[，。；]{0,1}|被告(?!单位)(?!.*公司)人?.*?犯.*?罪(?:（未遂）)*[，。]{0,1}免除处罚[，。；]{0,1}|被告(?!单位)(?!.*公司)人?.*?犯.*?罪(?:（未遂）)*[，。]{0,1}拘役.*'))
         else:
             continue
     return punish
 
+#提取罪名
+def get_charges(panjue_list):
+    pass
+    
 #提取犯罪金额
 def get_criminal_money(panjue_list):
     money=[]
@@ -215,29 +225,74 @@ def  get_time(time_list,money_list,text):
                     break
    #     print('can out')
     return temp
-                                
-#通过指控列表来提取时间
-def  get_criminal_time(raw_list):
-    temp=[]
-    final=[]
-    for text in raw_list:
-        time_list=re.findall(r'\d+年.{0,2}月?至\d+年|\d+年',text)
-        money_list=re.findall(r'\d+[，.]{0,1}\d*余?元(?![月旦])|\d+[，.]{0,1}\d*万元(?![月旦])',text)
-        #print(time_list)
-        #print(money_list)
-        if time_list==[] or money_list==[]:
+
+#获取所有被告的犯罪时间
+def  get_all_criminal_time(defendant, raw_list):
+    for i in range(0,len(defendant)):
+        temp1=raw_list
+        temp2=raw_list
+        defendant[i] = defendant[i] + get_one_criminal_time(defendant[i][0], temp1)  #10-11位
+        defendant[i].append(get_criminal_sentences(defendant[i][0], temp2)) #12位
+    
+        
+#获取一个被告的犯罪时间
+def  get_one_criminal_time(name, raw_list):
+    final = []
+    facts = get_sentences(raw_list)
+    final = final + get_criminal_time(name, facts)
+    final = get_criminal_year(final)
+    return  final
+    
+    
+    
+#将传入的列表进行整合分句
+def  get_sentences(raw_list):
+    temp = raw_list
+    temp = ''.join(temp)
+    fact_sentences=temp.split('。')
+    return fact_sentences
+
+#提取犯罪时间    
+def  get_criminal_time(name, raw_list):
+    final = []
+    previous = []
+    for  raw in raw_list:
+        money_list = []
+        time_list = []
+        if  name in raw:
+            time_list = re.findall(r'\d+年.{0,2}月?至\d+年|\d+年', raw)
+            money_list = re.findall(r'\d+[，.]{0,1}\d*余?元(?![月旦])|\d+[，.]{0,1}\d*万元(?![月旦])', raw)
+        if re.search(r"退缴|归还|退赃|退还|收到.*?元.*?案款",raw):
             continue
-        if len(time_list)==1:
-            temp=temp+time_list
-        else:
-            time_list=get_time(time_list,money_list,text)
-            temp=temp+time_list
-    if temp!=[]:
-        for i in range(0,len(temp)):
-            if temp[i] not in final:
-                final.append(temp[i])
+        if re.search(r'^事后', raw) and len(time_list) == 0 and len(money_list) !=0 and len(previous) != 0 :
+            final = final + previous
+        if len(money_list) !=0 and len(time_list) != 0 :
+            final = final + time_list
+        previous = time_list
     return final
-                
+
+#提取某个被告的犯罪句子
+def get_criminal_sentences(name, raw_list):
+    final = []
+    previous_time = []
+    previous_text =""
+    raw_list = get_sentences(raw_list)
+    for  raw in raw_list:
+        money_list = []
+        time_list = []
+        if  name in raw :
+            time_list = re.findall(r'\d+年.{0,2}月?至\d+年|\d+年', raw)
+            money_list = re.findall(r'\d+[，.]{0,1}\d*余?元(?![月旦])|\d+[，.]{0,1}\d*万元(?![月旦])', raw)
+        if re.search(r'^事后', raw) and len(time_list) == 0 and len(money_list) !=0 and len(previous_time) != 0 :
+            final.append(previous_text)
+            final.append(raw)
+        if len(money_list) !=0 and len(time_list) != 0 :
+            final.append(raw)
+        previous_text = raw
+        previous_time = time_list
+    final = '。'.join(final)
+    return final
+    
         
 #传入审理列表和提取犯罪金额的表达式
 def get_trial(trial_list,re_str):
@@ -315,16 +370,21 @@ def get_criminal_year(raw_list):
     return final
 
 #整理判决信息
-def get_panjue(raw_list):
-    final=[]     
+def get_panjue(name, raw_list):
+    final=[]
     for p in raw_list:
-        temp=[]
-         #       temp.append(get_info(p,r'(?<=被告人).*?(?=[犯有])'))
-        temp=temp+[get_info(p[0],r'(?<=[有犯]).*?罪')[0]]
-             #   print(temp)
-        temp=temp+[get_info(p[0],r'(?<=判[处决]).*?(?=[，。])|免[予于]刑事处罚|免除处罚|拘役.*?[，。]')[0]]
-            #    print(temp)
-        final.append(temp)
+        temp = p
+        if re.search(r'被告人' + name +'.*?[，；。]', p):
+            replace = ''.join(get_info(p,r'被告人' + name +'.*?[，；。]'))
+            p = p.replace(p[:p.find(replace)+len(replace)], '')
+            if final == []:
+                final.append(replace)
+                final.append(p)
+                final.append(temp)    
+    if final == []:
+        final.append("")
+        final.append("")
+        final.append("")
     return final
 
 #整理总的受贿金额
@@ -392,6 +452,17 @@ def  get_workplace(text):
     #print(workplace)
     return workplace
 
+#在事实列表中提取工作单位
+def  get_workplaces(name, raw_list):
+    final = []
+    temp = raw_list
+    temp = get_sentences(temp)
+    for text in temp :
+        if name in text and re.search(r'被告人' + name + '.{0,10}(?:身为|作为|担任|任).*?，', text) :
+            final = final + re.findall(r'被告人' + name + '.{0,10}(?:身为|作为|担任|任).*?，', text)
+    final = ''.join(final)
+    return final
+    
 
 #抽象出划分文书的方法，传入一个划分好的文书列表，以及相应用于划分的正则表达式
 def divide(raw_list,begin_str,end_str=None):
@@ -417,6 +488,29 @@ def divide(raw_list,begin_str,end_str=None):
                 temp=temp+raw_list[i:i+1]
     return temp
 
+#利用short_content来提取金额
+def  get_illegel_money(name, text) :
+    final = []
+    if re.search(r'被告人' + name + '.*?利用.*?(?:职务上的便利|职务之便).*?(?:非法)?收受.*?元', text):
+        temp = ''.join(re.findall(r'被告人' + name + '.*?利用.*?(?:职务上的便利|职务之便).*?(?:非法)?收受.*?元', text))
+        final.append( '、'.join(re.findall(r'\d+\.?\d*(?=元)', temp)))
+        final.append(temp)
+    if final == [] :
+        final.append("")
+        final.append("")
+    return  final
+
+
+def clean_second_trial(panjue_list):
+    if panjue_list != [] :
+        panjue_list.reverse()
+        throw=panjue_list.pop()
+        panjue_list.reverse()
+        if re.search(r'^本判决为终审判决', panjue_list[-1]) :
+            panjue = get_judgement(panjue_list)
+            
+        
+    
 def cleanOneDoc(result):
     defendant=[]
     judge_type=''
@@ -431,16 +525,14 @@ def cleanOneDoc(result):
     #print(temp)
                 
     if result[2]=='一审':
-        criminal_time=[]
-                        
+        criminal_time=[]              
         suing_list=[]
         zhikong_list=[]
         shenli_list=[]
         index=float('inf')
         delete_index=float('inf')
 
-        defendant_list=divide(temp,defendant_re)
-        
+        defendant_list=divide(temp,defendant_re)       
         defender_list=divide(temp,defender_re)
         suing_list=divide(temp,suing_re)
         zhikong_list=get_short_charge(temp,zhikong_re,zhikong_re_list)
@@ -448,101 +540,87 @@ def cleanOneDoc(result):
             defendant_list=get_clear_defendant(defendant_list,suing_list[0],temp)
         if zhikong_list!=[]:
             defendant_list=get_clear_defendant(defendant_list,zhikong_list[0],temp)
-
         for j in range(0,len(defendant_list)):
             defendant.append(get_defendant(defendant_list[j]))
         defendant=get_final_defendant(defendant)
-        #print(defendant_list)
-        #print(defendant)     
-        if zhikong_list!=[]:
-            criminal_time=get_criminal_time(zhikong_list)
-        #print("criminal_time1: %s"%criminal_time)
-                      
-        if criminal_time==[]:
-            shenli_list=divide(temp,shenli_re,shenli_re1)
-            #print("criminal_time2: %s"%criminal_time)
-            if shenli_list!=[]:
-                criminal_time=get_criminal_time(shenli_list)
-        #print("criminal_time3: %s"%criminal_time)
-        for n in range(0,len(defendant)):
-            defendant[n]=defendant[n]+get_criminal_year(criminal_time)
-                        
-        panjue_list=divide(temp,panjue_re,panjue_re1)
-        #print("panjue_list", panjue_list)
+        shenli_list=divide(temp, shenli_re, shenli_re1)
+        get_all_criminal_time(defendant, shenli_list)   #提到12位了
+        panjue_list = divide(temp,panjue_re,panjue_re1)
         if panjue_list!=[]:
             panjue_list.reverse()
             throw=panjue_list.pop()
             panjue_list.reverse()
-        panjue=get_panjue(get_judgement(panjue_list))
-        if len(get_criminal_money(panjue_list))==len(defendant):
-            total_money=get_totalmoney1(get_criminal_money(panjue_list))
-        else:
-            total_money=get_totalmoney2(get_criminal_money(panjue_list),len(defendant))
-        
-        if defendant!=[]:                  
-            if len(defendant)==len(panjue) :
-                for j in range(0,len(panjue)):
-                    defendant[j]=defendant[j]+panjue[j]
-            else:
-                for j in range(0,len(defendant)):
-                    defendant[j]=defendant[j]+['','']
-            if len(defendant)==len(total_money):
-                for j in range(0,len(defendant)):
-                    defendant[j]=defendant[j]+total_money[j]
-            elif len(total_money)==1:
-                for j in range(0,len(defendant)):
-                    defendant[j]=defendant[j]+total_money[0]
-            else:
-                for j in range(0,len(defendant)):
-                    defendant[j]=defendant[j]+['']
-                        
-        #print(defendant)    
+        panjue = get_judgement(panjue_list)
+        #提取工作单位从事实和指控列表中提取
+        for j in range(0, len(defendant)):
+            if defendant[j][3] == "" :
+                defendant[j][3] = get_workplaces(defendant[j][0], shenli_list)
+                defendant[j][3] = defendant[j][3] + get_workplaces(defendant[j][0], zhikong_list)
+            
+            #如果被告人对指控事实不持异议，那么就可从指控事实里面找犯罪时间
+            if defendant[j][9] == "" and re.search(r'被告人' + defendant[j][0] + '.*?不持异议', result[1]):
+                defendant[j][9], defendant[j][10] = get_one_criminal_time(defendant[j][0], zhikong_list)
+                defendant[j][11] = get_criminal_sentences(defendant[j][0], zhikong_list)
+            #提取判决信息
+            defendant[j] = defendant[j] + get_panjue(defendant[j][0], panjue)    #提取到14位
+            #利用short_content来提取金额
+            if result[3] != None:
+                defendant[j] = defendant[j] + get_illegel_money(defendant[j][0], result[3])  #提到16位了
+                           
     if result[2]=='二审':
-        yuanpan_list=[] 
-        defendant_list=divide(temp,defendant_re_2)
+        panjue = []
+        yuan_facts = []
+        yuanpan_list = [] 
+        defendant_list = divide(temp, defendant_re_2)
         for j in range(0,len(defendant_list)):
             defendant.append(get_defendant(defendant_list[j]))
-        defendant=get_final_defendant(defendant)
-        defender_list=divide(temp,defender_re)
-        yuanpan_list=divide(temp,yuanpan_re,yuanpan_re1)
-        shenli_list=divide(temp,shenli_re,shenli_re1)
-                        
-        if shenli_list!=[]:
-            criminal_time=get_criminal_time(shenli_list)
-            if criminal_time==[] and yuanpan_list!=[]:
-                criminal_time=get_criminal_time(yuanpan_list)
-        for n in range(0,len(defendant)):
-            defendant[n]=defendant[n]+get_criminal_year(criminal_time)
+        defendant = get_final_defendant(defendant)
+        defender_list=divide(temp, defender_re)
+        yuanpan_list=divide(temp, yuanpan_re, yuanpan_re1)
+        shenli_list=divide(temp, shenli_re, shenli_re1)
+        yuan_facts = divide(temp, yuan_fact_re, yuan_fact_re1)
         panjue_list=divide(temp,panjue_re_2,panjue_re1_2)
         if panjue_list!=[]:
             panjue_list.reverse()
             throw=panjue_list.pop()
             panjue_list.reverse()
-        panjue=get_panjue(get_judgement(panjue_list))
-        if len(get_criminal_money(panjue_list))==len(defendant):
-            total_money=get_totalmoney1(get_criminal_money(panjue_list))
-        else:
-            total_money=get_totalmoney2(get_criminal_money(panjue_list),len(defendant))
-        if defendant!=[]:                  
-            if len(defendant)==len(panjue) :
-                for j in range(0,len(panjue)):
-                    defendant[j]=defendant[j]+panjue[j]
-            else:
-                for j in range(0,len(defendant)):
-                    defendant[j]=defendant[j]+['','']
-            if len(defendant)==len(total_money):
-                for j in range(0,len(defendant)):
-                    defendant[j]=defendant[j]+total_money[j]
-            elif len(total_money)==1:
-                for j in range(0,len(defendant)):
-                    defendant[j]=defendant[j]+total_money[0]
-            else:
-                for j in range(0,len(defendant)):
-                    defendant[j]=defendant[j]+['']               
-
+            if re.search(r'^本判决为终审判决', panjue_list[-1]):
+                get_all_criminal_time(defendant, shenli_list) 
+                panjue = get_judgement(panjue_list)
+                for j in range(0, len(defendant)):
+                    defendant[j] = defendant[j] + get_panjue(defendant[j][0], panjue)
+                    if defendant[j][3] == "" :
+                        defendant[j][3] = get_workplaces(defendant[j][0], shenli_list)
+                        
+            elif re.search(r'^本裁定为终审裁定',panjue_list[-1]):
+                panjues = ''.join(panjue_list)
+                if re.search(r'维持原判|撤回上诉', panjues):
+                    get_all_criminal_time(defendant, yuan_facts)
+                    panjue = get_judgement(yuanpan_list)
+                    for j in range(0, len(defendant)):
+                        defendant[j] = defendant[j] + get_panjue(defendant[j][0], panjue)
+                        if defendant[j][3] == "":
+                            defendant[j][3] = get_workplaces(defendant[j][0], yuan_facts)
+                            
+                if re.search(r'发回.*?重新审判', panjues):
+                    pass
+                    
+        '''
+        get_all_criminal_time(defendant, shenli_list)
+        
+        for j in range(0, len(defendant)):
+            if defendant[j][3] == "" :
+                defendant[j][3] = get_workplaces(defendant[j][0], shenli_list)
+            defendant[j] = defendant[j] + get_panjue(defendant[j][0], panjue_list)
+            defendant[j] = defendant[j] + get_illegel_money(defendant[j][0], result[3])
+        '''
+    for num in range(0,len(defendant)):
+        defendant[num].append(defendant_list[num])    #17位
+    
     for k in defendant:
+        k.append('。'.join(panjue_list))     #18位
         k.reverse()
-        k.append(result[0])
+        k.append(result[0])         #0位
         k.reverse() 
     return defendant
 
