@@ -20,11 +20,11 @@ sql = ''' SELECT docid,content_html,content_progress  FROM wenshu_corruption.t_a
         '''
 
 sql = ''' SELECT docid,content_html,content_progress, short_content  FROM wenshu_corruption.t_anjian
-                where content_progress='一审' or content_progress='二审'  limit 50
+                where content_progress='一审' or content_progress='二审'  
         '''
-#sql = ''' select docid,content_html,content_progress, short_content FROM wenshu_corruption.t_anjian
- #           where docid = 'f0e40fa9-8923-45eb-a93d-b2eb0a3674bf'
-#        '''
+##sql = ''' select docid,content_html,content_progress, short_content FROM wenshu_corruption.t_anjian
+##            where docid = '870a40ad-d950-4739-b0fa-b0729e547916'
+##        '''
 
 
 results = databaseMethod.data_get(userid,password,database,sql)
